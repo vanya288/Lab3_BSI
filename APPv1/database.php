@@ -32,6 +32,39 @@
             $this -> mysqli -> close();
         }
 
+        public function getUserByLogin($login)
+        {
+            $stmt = $this -> mysqli -> prepare("select id, salt, hash from user WHERE login=?");
+
+            $stmt -> bind_param("s", $login);
+            $stmt -> execute();
+
+            $res = $stmt -> get_result();
+
+            return $res->fetch_assoc();
+        }
+
+        function isBannedWord($word)
+        {
+            $bannedWords = array(
+                'select', 'union', 'database', 'update', 'drop', 'insert', '=', ' or ', ' and ', 'join', '#'
+            );
+
+            foreach ($bannedWords as $bannedWord)
+            {
+                $pattern = '/(' . strtolower($bannedWord) . ')/';
+
+                $match = preg_match($pattern, strtolower($word));
+
+                if ($match)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public function select($sql)
         {
             //parameter $sql – select string
@@ -292,26 +325,54 @@
                 return false;
             }
 
-            $sql = "
-                INSERT INTO message (name, type, message)
-                    VALUES ('$name', '$type', '$message')";
+            $nameFiltered    = filter_var($name, FILTER_SANITIZE_STRING);
+            $messageFiltered = filter_var($message, FILTER_SANITIZE_STRING);
 
-            $inserted = false;
-
-            if ($result = $this -> mysqli -> query($sql))
+            if ($this->isBannedWord($name))
             {
-                if ($result)
-                {
-                    $inserted = true;
+                $this -> logError("Insert attack: ".$nameFiltered."", "Invalid data");
 
-                    $this -> log(
-                        $_SESSION['id_user'],
-                        self::CREATE,
-                        'message',
-                        1,
-                        '',
-                        "$name | $type | $message");
-                }
+                echo "Invalid data";
+
+                return false;
+            }
+
+            if ($this->isBannedWord($message))
+            {
+                $this -> logError("Insert attack: ".$messageFiltered."", "Invalid data");
+
+                echo "Invalid data";
+
+                return false;
+            }
+
+            $db = new PDO("mysql:host=" . 'localhost' . ";dbname=" . 'public', 'root', '');
+
+            $stmt = $db -> prepare("
+                INSERT INTO message (name, type, message)
+                    VALUES (?, ?, ?)");
+
+            $stmt -> bindValue(1, $nameFiltered,  PDO::PARAM_STR);
+            $stmt -> bindValue(2, $type,  PDO::PARAM_STR);
+            $stmt -> bindValue(3, $messageFiltered,  PDO::PARAM_STR);
+
+            $result = $stmt -> execute();
+
+            if ($result)
+            {
+                $inserted = true;
+
+                $this -> log(
+                    $_SESSION['id_user'],
+                    self::CREATE,
+                    'message',
+                    1,
+                    '',
+                    "$nameFiltered | $type | $messageFiltered");
+            }
+            else
+            {
+                $inserted = false;
             }
 
             return $inserted;
@@ -414,6 +475,31 @@
 
             $logged = false;
             $result = $this -> mysqli -> query($sql);
+
+            if ($result)
+            {
+                $logged = true;
+            }
+
+            return $logged;
+        }
+
+        public function logError($reason, $message)
+        {
+            $timestamp = date('Y-m-d H:i:s');
+
+            $db = new PDO("mysql:host=" . 'localhost' . ";dbname=" . 'public', 'root', '');
+
+            $stmt = $db -> prepare("
+                INSERT INTO error (`reason`, `message`, `time`)
+                    VALUES (?, ?, '$timestamp')");
+
+            $stmt -> bindValue(1, $reason,  PDO::PARAM_STR);
+            $stmt -> bindValue(2, $message,  PDO::PARAM_STR);
+
+            $result = $stmt -> execute();
+
+            $logged = false;
 
             if ($result)
             {

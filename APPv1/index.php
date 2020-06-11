@@ -18,23 +18,33 @@
         $pass   = $_REQUEST['password'];
         $hash   = md5($pass);
         $db     = new DB("localhost", "root", "", "public");
-        $sql    = "select id, salt, hash from user WHERE login='" . $login . "'";
-        $result = $db -> select($sql);
+        $result = null;
 
-        if (count($result) == 1)
+        if (!$db -> isBannedWord($login))
+        {
+            $loginFiltered = filter_input(INPUT_POST, 'login', FILTER_SANITIZE_SPECIAL_CHARS);
+
+            $result = $db -> getUserByLogin($loginFiltered);
+        }
+        else
+        {
+            $db -> logError("SQL Injection on login field: ".$login, "Login error");
+        }
+
+        if ($result)
         {
             if (!$db -> isIPAddressBlocked() &&
-                $result[0] -> hash == md5($pepper . $result[0] -> salt . $pass))
+                $result['hash'] == md5($pepper . $result['salt'] . $pass))
             {
                 echo "Signed successfully as: " . $login . "<br>";
                 $_SESSION['login']   = $login;
-                $_SESSION['id_user'] = $result[0] -> id;
+                $_SESSION['id_user'] = $result['id'];
 
-                $db -> registerLogin($result[0] -> id, true);
+                $db -> registerLogin($result['id'], true);
             }
             else
             {
-                $db -> registerLogin($result[0] -> id, false);
+                $db -> registerLogin($result['id'], false);
 
                 echo "<BR> User verification failed";
             }
