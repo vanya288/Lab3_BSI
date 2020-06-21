@@ -325,8 +325,11 @@
                 return false;
             }
 
-            $nameFiltered    = filter_var($name, FILTER_SANITIZE_STRING);
-            $messageFiltered = filter_var($message, FILTER_SANITIZE_STRING);
+            $nameFiltered    = strip_tags($name, '<b>');;
+            $messageFiltered = strip_tags($name, '<b>');;
+
+            $nameFiltered    = filter_var($nameFiltered, FILTER_SANITIZE_STRING);
+            $messageFiltered = filter_var($messageFiltered, FILTER_SANITIZE_STRING);
 
             if ($this->isBannedWord($name))
             {
